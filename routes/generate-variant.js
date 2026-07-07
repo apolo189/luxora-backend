@@ -1,4 +1,3 @@
-
 const express = require('express');
 const { editImage } = require('../lib/gemini');
 const { buildPrompt, buildFurniturePrompt, VARIANT_INTENSITY } = require('../lib/promptBuilder');
@@ -89,4 +88,6 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
+
+
 
