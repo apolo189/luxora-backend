@@ -2,6 +2,8 @@ require('dotenv').config();
 const express = require('express');
 const cors = require('cors');
 const generateVariantRoute = require('./routes/generate-variant');
+const prepareRoomRoute = require('./routes/prepare-room');
+const suggestDesignRoute = require('./routes/suggest-design');
 
 const app = express();
 const PORT = process.env.PORT || 8787;
@@ -14,11 +16,13 @@ app.get('/api/health', (req, res) => {
   res.json({
     ok: true,
     hasKey: Boolean(process.env.GEMINI_API_KEY),
-    imageModel: process.env.GEMINI_IMAGE_MODEL || 'gemini-2.5-flash-image'
+    imageModel: process.env.GEMINI_IMAGE_MODEL || 'gemini-3-pro-image-preview'
   });
 });
 
 app.use('/api/generate-variant', generateVariantRoute);
+app.use('/api/prepare-room', prepareRoomRoute);
+app.use('/api/suggest-design', suggestDesignRoute);
 
 app.use((err, req, res, next) => {
   console.error('Unhandled error:', err);
