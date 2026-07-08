@@ -1,6 +1,6 @@
 const express = require('express');
 const { editImage } = require('../lib/gemini');
-const { buildPrompt, buildFurniturePrompt, VARIANT_INTENSITY } = require('../lib/promptBuilder');
+const { buildPrompt, VARIANT_INTENSITY } = require('../lib/promptBuilder');
 
 const router = express.Router();
 
@@ -8,12 +8,21 @@ const router = express.Router();
  * POST /api/generate-variant
  * Body: {
  *   image: string,            // data URL of the room photo, e.g. "data:image/jpeg;base64,..."
+ *                              // IMPORTANT: when furnitureMode is not 'keep', this must be
+ *                              // the ALREADY-PREPARED photo returned by POST /api/prepare-room
+ *                              // (decluttered/furnished once, up front) — NOT the original
+ *                              // upload. Doing the furniture edit once and reusing it for all
+ *                              // 4 variant calls keeps the furniture identical across Safe/
+ *                              // Elegant/Premium/Wow (see routes/prepare-room.js for why).
  *   roomType: string,         // Luxora room type id, e.g. "living-room"
  *   scope: string,            // "walls-only" | "floors-only" | "walls-floors" | "accent-wall"
  *   style: string,            // Luxora style id, e.g. "modern-premium"
  *   wallColorName, wallColorHex, wallDesign,   // present if scope needs walls
  *   floorColorName, floorColorHex, floorDesign, // present if scope needs floors
- *   furnitureMode: 'keep' | 'declutter' | 'furnish',  // optional, defaults to 'keep'
+ *   furnitureMode: 'keep' | 'declutter' | 'furnish',  // optional, defaults to 'keep' —
+ *                              // only used here to pick the right "preserve furniture as
+ *                              // shown" wording; the actual furniture edit already happened
+ *                              // in /api/prepare-room before this call.
  *   variantId: 'safe' | 'elegant' | 'premium' | 'wow'
  * }
  * Returns: { variantId, imageUrl }   // imageUrl is a data: URL of the edited photo
@@ -53,29 +62,17 @@ router.post('/', async (req, res) => {
     const mimeType = match[1];
     const imageBase64 = match[2];
 
-    // Two-step pipeline when furniture must change: doing furniture and
-    // color/material in one single instruction was unreliable (Gemini would
-    // often skip or under-apply the furniture change in favor of the color
-    // change). Splitting into two focused, sequential edit calls — first
-    // declutter/furnish, then color — is much more reliable because each
-    // call has exactly one job.
-    let workingBase64 = imageBase64;
-    let workingMimeType = mimeType;
-
-    const furniturePrompt = buildFurniturePrompt({ roomType, furnitureMode });
-    if (furniturePrompt) {
-      const step1 = await editImage({ imageBase64: workingBase64, mimeType: workingMimeType, prompt: furniturePrompt.prompt });
-      workingBase64 = step1.base64;
-      workingMimeType = step1.mimeType;
-    }
-
+    // Furniture is handled up front by /api/prepare-room (once, before the
+    // 4 parallel variant calls) — this endpoint only ever touches color/
+    // material, and treats whatever furniture is in the incoming photo as
+    // final (skipFurnitureInstruction: true whenever furnitureMode !== 'keep').
     const { prompt } = buildPrompt(
       { roomType, scope, style, wallColorName, wallColorHex, wallDesign, floorColorName, floorColorHex, floorDesign, furnitureMode },
       variantId,
-      { skipFurnitureInstruction: Boolean(furniturePrompt) }
+      { skipFurnitureInstruction: (furnitureMode || 'keep') !== 'keep' }
     );
 
-    const result = await editImage({ imageBase64: workingBase64, mimeType: workingMimeType, prompt });
+    const result = await editImage({ imageBase64, mimeType, prompt });
 
     res.json({
       variantId,
@@ -88,6 +85,3 @@ router.post('/', async (req, res) => {
 });
 
 module.exports = router;
-
-
-
